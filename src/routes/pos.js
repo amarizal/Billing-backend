@@ -164,12 +164,6 @@ router.post('/orders', authenticate, async (req, res) => {
             message: `Stok tidak mencukupi untuk ${dbItem.name}. Sisa: ${dbItem.stock}` 
           });
         }
-        stockUpdates.push(
-          prisma.posItem.update({
-            where: { id: dbItem.id },
-            data: { stock: { decrement: quantity } }
-          })
-        );
       }
 
       orderItems.push({
