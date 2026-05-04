@@ -210,7 +210,10 @@ router.post('/orders', authenticate, async (req, res) => {
     res.status(201).json({ success: true, data: result });
   } catch (err) {
     console.error('❌ POS Order Error:', err);
-    res.status(500).json({ success: false, message: 'Terjadi kesalahan server saat memproses pesanan' });
+    res.status(500).json({ 
+      success: false, 
+      message: `Error Server: ${err.message}` 
+    });
   }
 });
 
