@@ -78,11 +78,18 @@ router.post('/items', authenticate, requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'categoryId, name, price wajib diisi' });
     }
     const item = await prisma.posItem.create({
-      data: { categoryId, name, price, stock, displayOrder },
+      data: { 
+        categoryId, 
+        name, 
+        price: parseFloat(price.toString()), 
+        stock: stock !== null ? parseInt(stock.toString()) : null, 
+        displayOrder: displayOrder ? parseInt(displayOrder.toString()) : 0 
+      },
       include: { category: { select: { id: true, name: true } } },
     });
     res.status(201).json({ success: true, data: item });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
   }
 });
@@ -93,11 +100,19 @@ router.put('/items/:id', authenticate, requireAdmin, async (req, res) => {
     const { categoryId, name, price, stock, displayOrder, isActive } = req.body;
     const item = await prisma.posItem.update({
       where: { id: req.params.id },
-      data: { categoryId, name, price, stock, displayOrder, isActive },
+      data: { 
+        categoryId, 
+        name, 
+        price: price !== undefined ? parseFloat(price.toString()) : undefined, 
+        stock: stock !== undefined ? (stock !== null ? parseInt(stock.toString()) : null) : undefined, 
+        displayOrder: displayOrder !== undefined ? parseInt(displayOrder.toString()) : undefined, 
+        isActive 
+      },
       include: { category: { select: { id: true, name: true } } },
     });
     res.json({ success: true, data: item });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(404).json({ success: false, message: 'Item tidak ditemukan' });
   }
 });
