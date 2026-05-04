@@ -150,7 +150,6 @@ router.post('/orders', authenticate, async (req, res) => {
 
     // Hitung subtotal & Validasi Stok
     const orderItems = [];
-    const stockUpdates = [];
 
     for (const i of items) {
       const dbItem = dbItems.find((d) => d.id === i.itemId);
@@ -185,22 +184,18 @@ router.post('/orders', authenticate, async (req, res) => {
     const subtotal = orderItems.reduce((sum, i) => sum + i.subtotal, 0);
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Kurangi stok
-      for (const update of stockUpdates) {
-        await update; // Ini salah kalau panggil update di luar tx, harusnya pakai tx
-      }
-      // Re-writing to be safer inside transaction
+      // 1. Kurangi stok untuk item yang dikelola stoknya
       for (const i of items) {
         const dbItem = dbItems.find((d) => d.id === i.itemId);
-        if (dbItem.stock !== null) {
+        if (dbItem && dbItem.stock !== null) {
           await tx.posItem.update({
             where: { id: dbItem.id },
-            data: { stock: { decrement: i.quantity } }
+            data: { stock: { decrement: parseInt(i.quantity.toString()) } }
           });
         }
       }
 
-      // 2. Buat Order
+      // 2. Buat Order POS
       return await tx.posOrder.create({
         data: {
           sessionId: sessionId || null,
@@ -214,8 +209,8 @@ router.post('/orders', authenticate, async (req, res) => {
 
     res.status(201).json({ success: true, data: result });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
+    console.error('❌ POS Order Error:', err);
+    res.status(500).json({ success: false, message: 'Terjadi kesalahan server saat memproses pesanan' });
   }
 });
 
