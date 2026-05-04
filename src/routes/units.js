@@ -70,6 +70,35 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/units/reorder — admin only
+router.post('/reorder', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { orders } = req.body;
+    if (!Array.isArray(orders)) {
+      return res.status(400).json({ success: false, message: 'orders harus berupa array' });
+    }
+
+    // Melakukan update dalam satu transaksi
+    const updates = orders.map((o) => {
+      return prisma.unit.update({
+        where: { id: o.id },
+        data: { displayOrder: parseInt(o.displayOrder.toString()) }
+      });
+    });
+
+    await prisma.$transaction(updates);
+
+    res.json({ success: true, message: 'Urutan unit berhasil diperbarui' });
+  } catch (err) {
+    console.error('❌ Reorder Error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Gagal memperbarui urutan',
+      error: err.message
+    });
+  }
+});
+
 // DELETE /api/units/:id — admin only (soft delete)
 router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
