@@ -78,10 +78,15 @@ async function main() {
 
   const createdCategories = {};
   for (const cat of categories) {
-    const created = await prisma.posCategory.create({ data: cat });
-    createdCategories[cat.name] = created.id;
+    const existing = await prisma.posCategory.findFirst({ where: { name: cat.name } });
+    if (existing) {
+      createdCategories[cat.name] = existing.id;
+    } else {
+      const created = await prisma.posCategory.create({ data: cat });
+      createdCategories[cat.name] = created.id;
+    }
   }
-  console.log(`✅ ${categories.length} POS Categories seeded`);
+  console.log(`✅ ${categories.length} POS Categories checked/seeded`);
 
   // ─── POS Items ─────────────────────────────────
   const items = [
@@ -97,15 +102,18 @@ async function main() {
   ];
 
   for (const item of items) {
-    await prisma.posItem.create({
-      data: {
-        name: item.name,
-        price: item.price,
-        categoryId: createdCategories[item.categoryName],
-      },
-    });
+    const existingItem = await prisma.posItem.findFirst({ where: { name: item.name } });
+    if (!existingItem) {
+      await prisma.posItem.create({
+        data: {
+          name: item.name,
+          price: item.price,
+          categoryId: createdCategories[item.categoryName],
+        },
+      });
+    }
   }
-  console.log(`✅ ${items.length} POS Items seeded`);
+  console.log(`✅ ${items.length} POS Items checked/seeded`);
 
   console.log('\n🎉 Seeding selesai!');
   console.log('─────────────────────────────');
