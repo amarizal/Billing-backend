@@ -2,14 +2,14 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
-const authRoutes     = require('./routes/auth');
-const userRoutes     = require('./routes/users');
-const unitRoutes     = require('./routes/units');
-const packageRoutes  = require('./routes/packages');
-const sessionRoutes  = require('./routes/sessions');
-const posRoutes      = require('./routes/pos');
-const receiptRoutes  = require('./routes/receipts');
-const reportRoutes   = require('./routes/reports');
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const unitRoutes = require('./routes/units');
+const packageRoutes = require('./routes/packages');
+const sessionRoutes = require('./routes/sessions');
+const posRoutes = require('./routes/pos');
+const receiptRoutes = require('./routes/receipts');
+const reportRoutes = require('./routes/reports');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,14 +28,14 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // ─── Routes ────────────────────────────────────────────────
-app.use('/api/auth',     authRoutes);
-app.use('/api/users',    userRoutes);
-app.use('/api/units',    unitRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/units', unitRoutes);
 app.use('/api/packages', packageRoutes);
 app.use('/api/sessions', sessionRoutes);
-app.use('/api/pos',      posRoutes);
+app.use('/api/pos', posRoutes);
 app.use('/api/receipts', receiptRoutes);
-app.use('/api/reports',  reportRoutes);
+app.use('/api/reports', reportRoutes);
 
 // ─── Health Check ──────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -57,8 +57,9 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Start Server ──────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🚀 Billing POS API berjalan di port ${PORT}`);
+const port = process.env.PORT || 3000;
+app.listen(port, "0.0.0.0", () => {
+  console.log(`Server is running on port ${port}`);
   console.log(`   Environment: ${process.env.NODE_ENV}`);
-  console.log(`   Health: http://localhost:${PORT}/health`);
+  console.log(`   Health: http://localhost:${port}/health`);
 });
