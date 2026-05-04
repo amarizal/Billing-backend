@@ -1,0 +1,244 @@
+// This is your Prisma schema file
+// SQLite-compatible version (untuk development & deploy lokal)
+// Untuk switch ke PostgreSQL: ganti provider + DATABASE_URL + tambahkan kembali @db.* annotations
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE: SQLite tidak support native ENUMs.
+// Nilai enum disimpan sebagai String dengan validasi di application layer.
+// Role      : "admin" | "kasir"
+// UnitType  : "PS4"   | "PS5"
+// UnitStatus: "available" | "in_use" | "maintenance"
+// PackageType: "package" | "hourly"
+// SessionStatus: "active" | "completed" | "cancelled"
+// PrintStatus: "printed" | "digital_only" | "pending"
+// PaymentMethod: "cash" | "qris"
+// SmartPlugBrand: "tuya" | "kasa"
+
+// ─────────────────────────────────────────────────────────────
+// USERS — Admin & Kasir
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  username      String   @unique
+  passwordHash  String   @map("password_hash")
+  role          String   @default("kasir") // "admin" | "kasir"
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sessions      Session[]
+  posOrders     PosOrder[]
+  receipts      Receipt[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+// REFRESH TOKENS — JWT Auth
+// ─────────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────
+// UNITS — PS4/PS5 Consoles
+// ─────────────────────────────────────────────────────────────
+
+model Unit {
+  id                String   @id @default(uuid())
+  name              String
+  type              String   // "PS4" | "PS5"
+  status            String   @default("available") // "available" | "in_use" | "maintenance"
+  displayOrder      Int      @default(0) @map("display_order")
+  isActive          Boolean  @default(true) @map("is_active")
+  // Smart Plug fields (Fase 5)
+  smartPlugIp       String?  @map("smart_plug_ip")
+  smartPlugBrand    String?  @map("smart_plug_brand") // "tuya" | "kasa"
+  smartPlugDeviceId String?  @map("smart_plug_device_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sessions          Session[]
+
+  @@map("units")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PACKAGES — Billing Packages (Paket / Per Jam)
+// ─────────────────────────────────────────────────────────────
+
+model Package {
+  id              String   @id @default(uuid())
+  name            String
+  description     String?
+  type            String   @default("package") // "package" | "hourly"
+  durationMinutes Int      @map("duration_minutes") // 0 jika hourly (tidak ada batas)
+  price           Float    // Per paket atau per jam
+  applicableTo    String?  @map("applicable_to") // "PS4" | "PS5" | null = semua
+  displayOrder    Int      @default(0) @map("display_order")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sessions        Session[]
+
+  @@map("packages")
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS CATEGORIES — Kategori Item (Minuman, Makanan, dll)
+// ─────────────────────────────────────────────────────────────
+
+model PosCategory {
+  id           String    @id @default(uuid())
+  name         String
+  displayOrder Int       @default(0) @map("display_order")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  items        PosItem[]
+
+  @@map("pos_categories")
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS ITEMS — Menu/Barang yang Dijual
+// ─────────────────────────────────────────────────────────────
+
+model PosItem {
+  id           String      @id @default(uuid())
+  categoryId   String      @map("category_id")
+  name         String
+  price        Float
+  stock        Int?        // null = unlimited
+  displayOrder Int         @default(0) @map("display_order")
+  isActive     Boolean     @default(true) @map("is_active")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  category     PosCategory  @relation(fields: [categoryId], references: [id])
+  orderItems   PosOrderItem[]
+
+  @@map("pos_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SESSIONS — Sesi Bermain per Unit
+// ─────────────────────────────────────────────────────────────
+
+model Session {
+  id              String   @id @default(uuid())
+  unitId          String   @map("unit_id")
+  kasirId         String   @map("kasir_id")
+  packageId       String?  @map("package_id")      // null jika pakai mode hourly bebas
+  startTime       DateTime @map("start_time")
+  plannedEndTime  DateTime? @map("planned_end_time") // untuk alert notifikasi
+  endTime         DateTime? @map("end_time")
+  durationMinutes Int?     @map("duration_minutes") // diisi saat sesi selesai
+  billingAmount   Float?   @map("billing_amount")
+  status          String   @default("active") // "active" | "completed" | "cancelled"
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  unit            Unit     @relation(fields: [unitId], references: [id])
+  kasir           User     @relation(fields: [kasirId], references: [id])
+  package         Package? @relation(fields: [packageId], references: [id])
+  posOrders       PosOrder[]
+  receipt         Receipt?
+
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS ORDERS — Transaksi Pembelian Item
+// ─────────────────────────────────────────────────────────────
+
+model PosOrder {
+  id        String   @id @default(uuid())
+  sessionId String?  @map("session_id") // null = transaksi POS standalone
+  kasirId   String   @map("kasir_id")
+  subtotal  Float
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  session   Session?     @relation(fields: [sessionId], references: [id])
+  kasir     User         @relation(fields: [kasirId], references: [id])
+  items     PosOrderItem[]
+  receipt   Receipt?
+
+  @@map("pos_orders")
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS ORDER ITEMS — Detail Item per Transaksi
+// ─────────────────────────────────────────────────────────────
+
+model PosOrderItem {
+  id        String   @id @default(uuid())
+  orderId   String   @map("order_id")
+  itemId    String   @map("item_id")
+  itemName  String   @map("item_name")  // snapshot nama saat transaksi
+  quantity  Int
+  unitPrice Float    @map("unit_price") // snapshot harga saat transaksi
+  subtotal  Float
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order     PosOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  item      PosItem  @relation(fields: [itemId], references: [id])
+
+  @@map("pos_order_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// RECEIPTS — Struk Final (Billing + POS)
+// ─────────────────────────────────────────────────────────────
+
+model Receipt {
+  id             String   @id @default(uuid())
+  receiptNumber  String   @unique @map("receipt_number") // RCP-20260504-001
+  sessionId      String?  @unique @map("session_id")
+  orderId        String?  @unique @map("order_id")
+  kasirId        String   @map("kasir_id")
+  billingAmount  Float    @default(0) @map("billing_amount")
+  posAmount      Float    @default(0) @map("pos_amount")
+  totalAmount    Float    @map("total_amount")
+  paymentMethod  String   @default("cash") @map("payment_method") // "cash" | "qris"
+  printStatus    String   @default("pending") @map("print_status") // "printed" | "digital_only" | "pending"
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Relations
+  session        Session?  @relation(fields: [sessionId], references: [id])
+  order          PosOrder? @relation(fields: [orderId], references: [id])
+  kasir          User      @relation(fields: [kasirId], references: [id])
+
+  @@map("receipts")
+}
