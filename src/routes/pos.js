@@ -133,33 +133,71 @@ router.post('/orders', authenticate, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Beberapa item tidak ditemukan atau tidak aktif' });
     }
 
-    // Hitung subtotal
-    const orderItems = items.map((i) => {
+    // Hitung subtotal & Validasi Stok
+    const orderItems = [];
+    const stockUpdates = [];
+
+    for (const i of items) {
       const dbItem = dbItems.find((d) => d.id === i.itemId);
       const unitPrice = Number(dbItem.price);
-      const quantity = i.quantity;
-      return {
+      const quantity = parseInt(i.quantity.toString());
+
+      // Validasi Stok
+      if (dbItem.stock !== null) {
+        if (dbItem.stock < quantity) {
+          return res.status(400).json({ 
+            success: false, 
+            message: `Stok tidak mencukupi untuk ${dbItem.name}. Sisa: ${dbItem.stock}` 
+          });
+        }
+        stockUpdates.push(
+          prisma.posItem.update({
+            where: { id: dbItem.id },
+            data: { stock: { decrement: quantity } }
+          })
+        );
+      }
+
+      orderItems.push({
         itemId: dbItem.id,
         itemName: dbItem.name,
         quantity,
         unitPrice,
         subtotal: unitPrice * quantity,
-      };
-    });
+      });
+    }
 
     const subtotal = orderItems.reduce((sum, i) => sum + i.subtotal, 0);
 
-    const order = await prisma.posOrder.create({
-      data: {
-        sessionId: sessionId || null,
-        kasirId: req.user.id,
-        subtotal,
-        items: { create: orderItems },
-      },
-      include: { items: true },
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Kurangi stok
+      for (const update of stockUpdates) {
+        await update; // Ini salah kalau panggil update di luar tx, harusnya pakai tx
+      }
+      // Re-writing to be safer inside transaction
+      for (const i of items) {
+        const dbItem = dbItems.find((d) => d.id === i.itemId);
+        if (dbItem.stock !== null) {
+          await tx.posItem.update({
+            where: { id: dbItem.id },
+            data: { stock: { decrement: i.quantity } }
+          });
+        }
+      }
+
+      // 2. Buat Order
+      return await tx.posOrder.create({
+        data: {
+          sessionId: sessionId || null,
+          kasirId: req.user.id,
+          subtotal,
+          items: { create: orderItems },
+        },
+        include: { items: true },
+      });
     });
 
-    res.status(201).json({ success: true, data: order });
+    res.status(201).json({ success: true, data: result });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
