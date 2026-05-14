@@ -60,7 +60,9 @@ app.use((err, _req, res, _next) => {
 
 // ─── Start Server ──────────────────────────────────────────
 const server = http.createServer(app);
-const io = initSocket(server);
+initSocket(server); // Biarkan initSocket mengelola internal state-nya di socket.js
+
+const { getIo } = require('./socket'); // Ambil getIo untuk digunakan di ticker
 
 const port = process.env.PORT || 3000;
 server.listen(port, "0.0.0.0", () => {
@@ -124,7 +126,7 @@ async function autoStopSessions() {
         ]);
 
         // Broadcast ke TV agar langsung terkunci
-        io.emit('tv_status_update', {
+        getIo().emit('tv_status_update', {
           unitId: session.unit.id,
           status: 'available'
         });
