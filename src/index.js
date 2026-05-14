@@ -77,7 +77,7 @@ const prisma = require('./lib/prisma');
 async function autoStopSessions() {
   try {
     const now = new Date();
-    // Cari sesi aktif yang punya waktu selesai (plannedEndTime) dan sudah lewat
+    // Cari sesi aktif yang waktunya sudah habis
     const expiredSessions = await prisma.session.findMany({
       where: {
         status: 'active',
@@ -88,54 +88,21 @@ async function autoStopSessions() {
       },
       include: {
         unit: true,
-        package: true,
       },
     });
 
-    if (expiredSessions.length > 0) {
-      console.log(`[AutoStop] Menutup ${expiredSessions.length} sesi yang habis waktunya...`);
+    for (const session of expiredSessions) {
+      // Hanya kirim sinyal kunci ke TV, jangan ubah status database
+      // agar kasir tetap bisa checkout manual.
+      getIo().emit('tv_status_update', {
+        unitId: session.unit.id,
+        status: 'available' // Sinyal Kunci (Layar Hitam)
+      });
       
-      for (const session of expiredSessions) {
-        // Hitung billing akhir
-        const durationMs = now - session.startTime;
-        const durationMinutes = Math.ceil(durationMs / 60000);
-        let billingAmount = 0;
-
-        if (session.package.type === 'package') {
-          billingAmount = Number(session.package.price);
-        } else {
-          const pricePerMinute = Number(session.package.price) / 60;
-          billingAmount = Math.ceil(pricePerMinute * durationMinutes);
-        }
-
-        // Update database (Sesi & Unit)
-        await prisma.$transaction([
-          prisma.session.update({
-            where: { id: session.id },
-            data: { 
-              status: 'completed',
-              endTime: now,
-              durationMinutes,
-              billingAmount
-            }
-          }),
-          prisma.unit.update({
-            where: { id: session.unitId },
-            data: { status: 'available' }
-          })
-        ]);
-
-        // Broadcast ke TV agar langsung terkunci
-        getIo().emit('tv_status_update', {
-          unitId: session.unit.id,
-          status: 'available'
-        });
-        
-        console.log(`[AutoStop] Unit ${session.unit.name} otomatis terkunci.`);
-      }
+      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. Sinyal kunci dikirim ke TV.`);
     }
   } catch (err) {
-    console.error('[AutoStop] Error:', err);
+    console.error('[AutoLock] Error:', err);
   }
 }
 
