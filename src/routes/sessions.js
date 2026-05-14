@@ -163,7 +163,7 @@ router.put('/:id/stop', authenticate, async (req, res) => {
           status: 'completed' 
         },
         include: {
-          unit: { select: { id: true, name: true, type: true } },
+          unit: true, // Ambil semua field termasuk tuyaDeviceId
           package: true,
           kasir: { select: { id: true, name: true } },
         },

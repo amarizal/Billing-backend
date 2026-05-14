@@ -65,9 +65,12 @@ class TuyaService {
     const timestamp = Date.now();
     const value = action === 'ON';
     
-    // Gunakan perintah tunggal yang paling standar
+    // Kirim ke switch dan switch_1 agar universal untuk semua merk colokan
     const body = {
-      commands: [{ code: 'switch_1', value: value }]
+      commands: [
+        { code: 'switch', value: value },
+        { code: 'switch_1', value: value }
+      ]
     };
 
     const strBody = JSON.stringify(body);
