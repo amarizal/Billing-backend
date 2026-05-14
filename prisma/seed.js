@@ -64,7 +64,11 @@ async function main() {
   ];
 
   for (const pkg of packages) {
-    await prisma.package.create({ data: pkg }).catch(() => {});
+    const existing = await prisma.package.findFirst({ where: { name: pkg.name } });
+    if (!existing) {
+      await prisma.package.create({ data: pkg });
+      console.log(`- Created package: ${pkg.name}`);
+    }
   }
   console.log(`✅ ${packages.length} Packages seeded`);
 
