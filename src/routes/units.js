@@ -78,14 +78,27 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 // PUT /api/units/:id — admin only
 router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, type, status, displayOrder, isActive, ipAddress, tuyaDeviceId } = req.body;
+    const { name, type, status, displayOrder, isActive, ipAddress, tuyaDeviceId, tuya_device_id } = req.body;
+    
+    // Gunakan salah satu yang ada datanya
+    const finalTuyaId = tuyaDeviceId || tuya_device_id;
+
     const unit = await prisma.unit.update({
       where: { id: req.params.id },
-      data: { name, type, status, displayOrder, isActive, ipAddress, tuyaDeviceId },
+      data: { 
+        name, 
+        type, 
+        status, 
+        displayOrder, 
+        isActive, 
+        ipAddress, 
+        tuyaDeviceId: finalTuyaId 
+      },
     });
     res.json({ success: true, data: unit });
-  } catch {
-    res.status(404).json({ success: false, message: 'Unit tidak ditemukan' });
+  } catch (err) {
+    console.error(err);
+    res.status(404).json({ success: false, message: 'Unit tidak ditemukan atau kesalahan database' });
   }
 });
 
