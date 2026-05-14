@@ -9,8 +9,8 @@ class TuyaService {
   constructor() {
     this.accessId = process.env.TUYA_ACCESS_ID;
     this.accessSecret = process.env.TUYA_ACCESS_SECRET;
-    // Menggunakan base URL dari Railway atau default ke US
-    this.baseUrl = process.env.TUYA_BASE_URL || 'https://openapi.tuyaus.com';
+    // Default ke domain terbaru Tuya untuk Singapore
+    this.baseUrl = process.env.TUYA_BASE_URL || 'https://openapi-sg.iotbing.com';
     this.enabled = process.env.SMART_PLUG_ENABLED === 'true';
   }
 
