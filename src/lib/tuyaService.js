@@ -14,49 +14,53 @@ class TuyaService {
     this.enabled = process.env.SMART_PLUG_ENABLED === 'true';
   }
 
-  // Mendapatkan token akses dari Tuya (Valid 2 jam)
+  // Menghitung Signature sesuai standar Tuya v1.0
+  calcSign(body, method, url, timestamp, token = '') {
+    const strBody = body ? crypto.createHash('sha256').update(body).digest('hex') : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    const stringToSign = [method, strBody, '', url].join('\n');
+    const signStr = this.accessId + token + timestamp + stringToSign;
+    return crypto.createHmac('sha256', this.accessSecret).update(signStr).digest('hex').toUpperCase();
+  }
+
+  // Mengambil Access Token dari Tuya
   async getToken() {
     const timestamp = Date.now();
-    const sign = this.calcSign('', 'GET', '/v1.0/token?grant_type=1', timestamp);
-    
+    const url = '/v1.0/token?grant_type=1';
+    const sign = this.calcSign('', 'GET', url, timestamp);
+
     try {
-      const response = await axios.get(`${this.baseUrl}/v1.0/token?grant_type=1`, {
+      const res = await axios.get(`${this.baseUrl}${url}`, {
         headers: {
           't': timestamp,
           'sign_method': 'HMAC-SHA256',
           'client_id': this.accessId,
-          'sign': sign,
+          'sign': sign
         }
       });
-      return response.data.result.access_token;
+      if (res.data.success) {
+        return res.data.result.access_token;
+      }
+      console.error(`[Tuya] Gagal ambil Token: ${res.data.msg} (Code: ${res.data.code})`);
+      return null;
     } catch (err) {
-      console.error('[Tuya] Gagal ambil token:', err.response?.data || err.message);
+      console.error('[Tuya] Error Auth (Check Network/URL):', err.message);
       return null;
     }
   }
 
   // Mengirim perintah ke Colokan (ON / OFF)
   async controlDevice(deviceId, action) {
-    if (!this.enabled) {
-      console.log('[Tuya] Fitur Smart Plug dinonaktifkan (SMART_PLUG_ENABLED=false).');
-      return;
-    }
-
-    if (!this.accessId || !this.accessSecret || !deviceId) {
-      console.warn('[Tuya] Konfigurasi belum lengkap (ID/Secret/DeviceID kosong).');
-      return;
-    }
+    if (!this.enabled || !deviceId) return;
 
     const token = await this.getToken();
     if (!token) {
-      console.error('[Tuya] Gagal mendapatkan token, periksa AccessID/Secret di Railway.');
+      console.error('[Tuya] Perintah dibatalkan karena Token gagal didapat.');
       return;
     }
 
     const timestamp = Date.now();
     const value = action === 'ON';
     
-    // Kita kirim dua-duanya (switch dan switch_1) agar universal untuk semua merk colokan
     const body = {
       commands: [
         { code: 'switch', value: value },
@@ -81,21 +85,14 @@ class TuyaService {
       });
       
       if (res.data.success) {
-        console.log(`[Tuya] BERHASIL! Perangkat ${deviceId} diubah ke ${action}`);
+        console.log(`[Tuya] SUCCESS! Device ${deviceId} is now ${action}`);
       } else {
-        console.error(`[Tuya] Server merespon gagal: ${res.data.msg} (Code: ${res.data.code})`);
+        console.error(`[Tuya] FAILED: ${res.data.msg} (Code: ${res.data.code})`);
+        if (res.data.code === 1106) console.warn('[Tuya] TIP: Pastikan "IoT Core" sudah Authorized di Service API portal Tuya.');
       }
     } catch (err) {
-      console.error(`[Tuya] ERROR KONEKSI ke ${deviceId}:`, err.response?.data || err.message);
+      console.error(`[Tuya] NETWORK ERROR on ${deviceId}:`, err.response?.data || err.message);
     }
-  }
-
-  // Helper untuk menghitung Signature Tuya (Keamanan)
-  calcSign(body, method, url, timestamp, token = '') {
-    const strBody = body ? crypto.createHash('sha256').update(body).digest('hex') : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-    const stringToSign = [method, strBody, '', url].join('\n');
-    const signStr = this.accessId + token + timestamp + stringToSign;
-    return crypto.createHmac('sha256', this.accessSecret).update(signStr).digest('hex').toUpperCase();
   }
 }
 
