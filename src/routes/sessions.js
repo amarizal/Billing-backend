@@ -80,7 +80,15 @@ router.post('/start', authenticate, async (req, res) => {
     const startTime = new Date();
     let plannedEndTime = null;
     if (pkg.type === 'package' && pkg.durationMinutes > 0) {
-      plannedEndTime = new Date(startTime.getTime() + pkg.durationMinutes * 60000);
+      let totalMinutes = pkg.durationMinutes;
+      
+      // BONUS BOOTING: Jika pakai Smart Plug, tambah 5 menit otomatis
+      if (unit.tuyaDeviceId) {
+        totalMinutes += 5;
+        console.log(`[Billing] Memberikan bonus 5 menit booting untuk ${unit.name}`);
+      }
+      
+      plannedEndTime = new Date(startTime.getTime() + totalMinutes * 60000);
     }
 
     // Mulai sesi & update status unit
