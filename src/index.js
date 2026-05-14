@@ -60,7 +60,7 @@ app.use((err, _req, res, _next) => {
 
 // ─── Start Server ──────────────────────────────────────────
 const server = http.createServer(app);
-initSocket(server);
+const io = initSocket(server);
 
 const port = process.env.PORT || 3000;
 server.listen(port, "0.0.0.0", () => {
@@ -68,3 +68,74 @@ server.listen(port, "0.0.0.0", () => {
   console.log(`   Environment: ${process.env.NODE_ENV}`);
   console.log(`   Health: http://localhost:${port}/health`);
 });
+
+// ─── Auto-Stop Expired Sessions Ticker ──────────────────────
+const prisma = require('./lib/prisma');
+
+async function autoStopSessions() {
+  try {
+    const now = new Date();
+    // Cari sesi aktif yang punya waktu selesai (plannedEndTime) dan sudah lewat
+    const expiredSessions = await prisma.session.findMany({
+      where: {
+        status: 'active',
+        plannedEndTime: {
+          not: null,
+          lte: now,
+        },
+      },
+      include: {
+        unit: true,
+        package: true,
+      },
+    });
+
+    if (expiredSessions.length > 0) {
+      console.log(`[AutoStop] Menutup ${expiredSessions.length} sesi yang habis waktunya...`);
+      
+      for (const session of expiredSessions) {
+        // Hitung billing akhir
+        const durationMs = now - session.startTime;
+        const durationMinutes = Math.ceil(durationMs / 60000);
+        let billingAmount = 0;
+
+        if (session.package.type === 'package') {
+          billingAmount = Number(session.package.price);
+        } else {
+          const pricePerMinute = Number(session.package.price) / 60;
+          billingAmount = Math.ceil(pricePerMinute * durationMinutes);
+        }
+
+        // Update database (Sesi & Unit)
+        await prisma.$transaction([
+          prisma.session.update({
+            where: { id: session.id },
+            data: { 
+              status: 'completed',
+              endTime: now,
+              durationMinutes,
+              billingAmount
+            }
+          }),
+          prisma.unit.update({
+            where: { id: session.unitId },
+            data: { status: 'available' }
+          })
+        ]);
+
+        // Broadcast ke TV agar langsung terkunci
+        io.emit('tv_status_update', {
+          unitId: session.unit.id,
+          status: 'available'
+        });
+        
+        console.log(`[AutoStop] Unit ${session.unit.name} otomatis terkunci.`);
+      }
+    }
+  } catch (err) {
+    console.error('[AutoStop] Error:', err);
+  }
+}
+
+// Jalankan pengecekan setiap 1 menit
+setInterval(autoStopSessions, 60000);
