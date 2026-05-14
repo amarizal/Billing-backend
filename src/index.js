@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { initSocket } = require('./socket');
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -57,8 +59,11 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Start Server ──────────────────────────────────────────
+const server = http.createServer(app);
+initSocket(server);
+
 const port = process.env.PORT || 3000;
-app.listen(port, "0.0.0.0", () => {
+server.listen(port, "0.0.0.0", () => {
   console.log(`Server is running on port ${port}`);
   console.log(`   Environment: ${process.env.NODE_ENV}`);
   console.log(`   Health: http://localhost:${port}/health`);

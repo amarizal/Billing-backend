@@ -72,6 +72,7 @@ model Unit {
   status            String   @default("available") // "available" | "in_use" | "maintenance"
   displayOrder      Int      @default(0) @map("display_order")
   isActive          Boolean  @default(true) @map("is_active")
+  ipAddress         String?  @map("ip_address") // IP TV Android Lokal untuk ADB
   // Smart Plug fields (Fase 5)
   smartPlugIp       String?  @map("smart_plug_ip")
   smartPlugBrand    String?  @map("smart_plug_brand") // "tuya" | "kasa"

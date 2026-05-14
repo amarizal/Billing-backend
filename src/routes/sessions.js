@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
+const { getIo } = require('../socket');
 
 const router = express.Router();
 
@@ -101,6 +102,16 @@ router.post('/start', authenticate, async (req, res) => {
       prisma.unit.update({ where: { id: unitId }, data: { status: 'in_use' } }),
     ]);
 
+    // Broadcast ke Smart TV via WebSocket
+    try {
+      getIo().emit('tv_status_update', {
+        unitId: unit.name,
+        status: 'active'
+      });
+    } catch (err) {
+      console.error('[Socket] Failed to broadcast start session', err);
+    }
+
     res.status(201).json({ success: true, data: session });
   } catch (err) {
     console.error(err);
@@ -145,6 +156,16 @@ router.put('/:id/stop', authenticate, async (req, res) => {
       }),
       prisma.unit.update({ where: { id: session.unitId }, data: { status: 'available' } }),
     ]);
+
+    // Broadcast ke Smart TV via WebSocket (status = expired/waktu habis)
+    try {
+      getIo().emit('tv_status_update', {
+        unitId: updatedSession.unit.name,
+        status: 'expired'
+      });
+    } catch (err) {
+      console.error('[Socket] Failed to broadcast stop session', err);
+    }
 
     res.json({ success: true, data: updatedSession });
   } catch (err) {
