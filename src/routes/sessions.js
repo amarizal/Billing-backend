@@ -108,8 +108,14 @@ router.post('/start', authenticate, async (req, res) => {
         unitId: session.unit.id,
         status: 'in_use'
       });
+      
+      // KONTROL TUYA: Jika unit pakai Smart Plug
+      if (session.unit.tuyaDeviceId) {
+        const tuyaService = require('../lib/tuyaService');
+        tuyaService.controlDevice(session.unit.tuyaDeviceId, 'ON');
+      }
     } catch (err) {
-      console.error('[Socket] Failed to broadcast start session', err);
+      console.error('[Socket/Tuya] Failed to broadcast start session', err);
     }
 
     res.status(201).json({ success: true, data: session });

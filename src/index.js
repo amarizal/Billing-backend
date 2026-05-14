@@ -92,14 +92,19 @@ async function autoStopSessions() {
     });
 
     for (const session of expiredSessions) {
-      // Hanya kirim sinyal kunci ke TV, jangan ubah status database
-      // agar kasir tetap bisa checkout manual.
+      // Sinyal Kunci TV Launcher
       getIo().emit('tv_status_update', {
         unitId: session.unit.id,
-        status: 'available' // Sinyal Kunci (Layar Hitam)
+        status: 'available'
       });
+
+      // Sinyal Matikan Colokan Tuya
+      if (session.unit.tuyaDeviceId) {
+        const tuyaService = require('./lib/tuyaService');
+        tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
+      }
       
-      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. Sinyal kunci dikirim ke TV.`);
+      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. Sinyal kunci & Tuya dikirim.`);
     }
   } catch (err) {
     console.error('[AutoLock] Error:', err);
