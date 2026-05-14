@@ -14,7 +14,7 @@ class TuyaService {
     this.enabled = process.env.SMART_PLUG_ENABLED === 'true';
   }
 
-  // Menghitung Signature sesuai standar Tuya v1.0 (dengan Nonce)
+  // Menghitung Signature sesuai standar Tuya v1.0 yang paling ketat
   calcSign(body, method, url, timestamp, token = '') {
     const strBody = body ? crypto.createHash('sha256').update(body).digest('hex') : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
     
@@ -28,6 +28,8 @@ class TuyaService {
 
   // Mengambil Access Token dari Tuya
   async getToken() {
+    if (!this.accessId || !this.accessSecret) return null;
+    
     const timestamp = Date.now();
     const url = '/v1.0/token?grant_type=1';
     const sign = this.calcSign('', 'GET', url, timestamp);
@@ -45,10 +47,10 @@ class TuyaService {
       if (res.data.success) {
         return res.data.result.access_token;
       }
-      console.error(`[Tuya] Gagal ambil Token: ${res.data.msg} (Code: ${res.data.code})`);
+      console.error(`[Tuya] Token Error: ${res.data.msg} (Code: ${res.data.code})`);
       return null;
     } catch (err) {
-      console.error('[Tuya] Error Auth:', err.message);
+      console.error('[Tuya] Token Network Error:', err.message);
       return null;
     }
   }
@@ -63,6 +65,7 @@ class TuyaService {
     const timestamp = Date.now();
     const value = action === 'ON';
     
+    // Gunakan perintah tunggal yang paling standar
     const body = {
       commands: [{ code: 'switch_1', value: value }]
     };
@@ -73,6 +76,8 @@ class TuyaService {
 
     try {
       const fullUrl = this.baseUrl.replace(/\/$/, '') + url;
+      console.log(`[Tuya] Memanggil API: ${fullUrl} untuk ${deviceId}`);
+      
       const res = await axios.post(fullUrl, body, {
         headers: {
           't': timestamp,
@@ -85,12 +90,16 @@ class TuyaService {
       });
       
       if (res.data.success) {
-        console.log(`[Tuya] SUCCESS! Device ${deviceId} is now ${action}`);
+        console.log(`[Tuya] ✅ BERHASIL: Perangkat ${deviceId} sudah ${action}`);
       } else {
-        console.error(`[Tuya] FAILED: ${res.data.msg} (Code: ${res.data.code})`);
+        console.error(`[Tuya] ❌ GAGAL: ${res.data.msg} (Code: ${res.data.code})`);
+        // Jika 28841107 muncul lagi, kita beri saran otomatis
+        if (res.data.code === 28841107) {
+          console.warn('[Tuya] Saran: Coba ganti TUYA_BASE_URL di Railway ke https://openapi.tuyain.com atau https://openapi.tuyaus.com');
+        }
       }
     } catch (err) {
-      console.error(`[Tuya] NETWORK ERROR:`, err.response?.data || err.message);
+      console.error(`[Tuya] 🚨 ERROR:`, err.response?.data || err.message);
     }
   }
 }
