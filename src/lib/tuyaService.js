@@ -38,36 +38,38 @@ class TuyaService {
   // Mengirim perintah ke Colokan (ON / OFF)
   async controlDevice(deviceId, action) {
     if (!this.enabled) {
-      console.log('[Tuya] Fitur Smart Plug sedang dinonaktifkan (SMART_PLUG_ENABLED=false).');
+      console.log('[Tuya] Fitur Smart Plug dinonaktifkan (SMART_PLUG_ENABLED=false).');
       return;
     }
 
     if (!this.accessId || !this.accessSecret || !deviceId) {
-      console.warn('[Tuya] Konfigurasi belum lengkap, perintah diabaikan.');
+      console.warn('[Tuya] Konfigurasi belum lengkap (ID/Secret/DeviceID kosong).');
       return;
     }
 
     const token = await this.getToken();
-    if (!token) return;
+    if (!token) {
+      console.error('[Tuya] Gagal mendapatkan token, periksa AccessID/Secret di Railway.');
+      return;
+    }
 
     const timestamp = Date.now();
     const value = action === 'ON';
     
-    // Payload standar untuk Smart Plug Tuya
+    // Kita kirim dua-duanya (switch dan switch_1) agar universal untuk semua merk colokan
     const body = {
       commands: [
-        {
-          code: 'switch_1', // Kode umum untuk colokan 1 lubang
-          value: value
-        }
+        { code: 'switch', value: value },
+        { code: 'switch_1', value: value }
       ]
     };
 
     const strBody = JSON.stringify(body);
-    const sign = this.calcSign(strBody, 'POST', `/v1.0/devices/${deviceId}/commands`, timestamp, token);
+    const url = `/v1.0/devices/${deviceId}/commands`;
+    const sign = this.calcSign(strBody, 'POST', url, timestamp, token);
 
     try {
-      await axios.post(`${this.baseUrl}/v1.0/devices/${deviceId}/commands`, body, {
+      const res = await axios.post(`${this.baseUrl}${url}`, body, {
         headers: {
           't': timestamp,
           'sign_method': 'HMAC-SHA256',
@@ -77,9 +79,14 @@ class TuyaService {
           'Content-Type': 'application/json'
         }
       });
-      console.log(`[Tuya] Perangkat ${deviceId} berhasil diubah ke ${action}`);
+      
+      if (res.data.success) {
+        console.log(`[Tuya] BERHASIL! Perangkat ${deviceId} diubah ke ${action}`);
+      } else {
+        console.error(`[Tuya] Server merespon gagal: ${res.data.msg} (Code: ${res.data.code})`);
+      }
     } catch (err) {
-      console.error(`[Tuya] Gagal kontrol perangkat ${deviceId}:`, err.response?.data || err.message);
+      console.error(`[Tuya] ERROR KONEKSI ke ${deviceId}:`, err.response?.data || err.message);
     }
   }
 
