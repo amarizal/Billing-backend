@@ -61,13 +61,13 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST /api/units — admin only
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, type, displayOrder, ipAddress, smartPlugIp, smartPlugBrand, smartPlugDeviceId } = req.body;
+    const { name, type, displayOrder, ipAddress, tuyaDeviceId } = req.body;
     if (!name || !type) {
       return res.status(400).json({ success: false, message: 'name dan type wajib diisi' });
     }
 
     const unit = await prisma.unit.create({
-      data: { name, type, displayOrder, ipAddress, smartPlugIp, smartPlugBrand, smartPlugDeviceId },
+      data: { name, type, displayOrder, ipAddress, tuyaDeviceId },
     });
     res.status(201).json({ success: true, data: unit });
   } catch (err) {
@@ -78,10 +78,10 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 // PUT /api/units/:id — admin only
 router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, type, status, displayOrder, isActive, ipAddress, smartPlugIp, smartPlugBrand, smartPlugDeviceId } = req.body;
+    const { name, type, status, displayOrder, isActive, ipAddress, tuyaDeviceId } = req.body;
     const unit = await prisma.unit.update({
       where: { id: req.params.id },
-      data: { name, type, status, displayOrder, isActive, ipAddress, smartPlugIp, smartPlugBrand, smartPlugDeviceId },
+      data: { name, type, status, displayOrder, isActive, ipAddress, tuyaDeviceId },
     });
     res.json({ success: true, data: unit });
   } catch {
