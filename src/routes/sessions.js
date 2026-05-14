@@ -105,8 +105,8 @@ router.post('/start', authenticate, async (req, res) => {
     // Broadcast ke Smart TV via WebSocket
     try {
       getIo().emit('tv_status_update', {
-        unitId: unit.name,
-        status: 'active'
+        unitId: session.unit.id,
+        status: 'in_use'
       });
     } catch (err) {
       console.error('[Socket] Failed to broadcast start session', err);
@@ -160,8 +160,8 @@ router.put('/:id/stop', authenticate, async (req, res) => {
     // Broadcast ke Smart TV via WebSocket (status = expired/waktu habis)
     try {
       getIo().emit('tv_status_update', {
-        unitId: updatedSession.unit.name,
-        status: 'expired'
+        unitId: updatedSession.unit.id,
+        status: 'available'
       });
     } catch (err) {
       console.error('[Socket] Failed to broadcast stop session', err);
