@@ -172,6 +172,7 @@ router.put('/:id/stop', authenticate, async (req, res) => {
     ]);
 
     // Broadcast ke Smart TV via WebSocket (status = expired/waktu habis)
+    try {
       getIo().emit('tv_status_update', {
         unitId: updatedSession.unit.id,
         status: 'available'
