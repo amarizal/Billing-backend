@@ -92,19 +92,34 @@ async function autoStopSessions() {
     });
 
     for (const session of expiredSessions) {
-      // Sinyal Kunci TV Launcher
+      // 1. Update status di Database menjadi completed
+      await prisma.session.update({
+        where: { id: session.id },
+        data: { 
+          status: 'completed',
+          actualEndTime: now 
+        }
+      });
+
+      // 2. Update status Unit menjadi available
+      await prisma.unit.update({
+        where: { id: session.unit.id },
+        data: { status: 'available' }
+      });
+
+      // 3. Sinyal Kunci TV Launcher
       getIo().emit('tv_status_update', {
         unitId: session.unit.id,
         status: 'available'
       });
 
-      // Sinyal Matikan Colokan Tuya
+      // 4. Sinyal Matikan Colokan Tuya
       if (session.unit.tuyaDeviceId) {
         const tuyaService = require('./lib/tuyaService');
         tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
       }
       
-      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. Sinyal kunci & Tuya dikirim.`);
+      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. DB Updated, Sinyal kunci & Tuya dikirim.`);
     }
   } catch (err) {
     console.error('[AutoLock] Error:', err);
