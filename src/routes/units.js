@@ -61,17 +61,26 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST /api/units — admin only
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, type, displayOrder, ipAddress, tuyaDeviceId } = req.body;
+    const { name, type, displayOrder, ipAddress, tuyaDeviceId, tuya_device_id } = req.body;
     if (!name || !type) {
       return res.status(400).json({ success: false, message: 'name dan type wajib diisi' });
     }
 
+    const finalTuyaId = tuyaDeviceId || tuya_device_id;
+
     const unit = await prisma.unit.create({
-      data: { name, type, displayOrder, ipAddress, tuyaDeviceId },
+      data: { 
+        name, 
+        type, 
+        displayOrder, 
+        ipAddress, 
+        tuyaDeviceId: finalTuyaId 
+      },
     });
     res.status(201).json({ success: true, data: unit });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Terjadi kesalahan server saat membuat unit' });
   }
 });
 
