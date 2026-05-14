@@ -94,7 +94,7 @@ router.post('/start', authenticate, async (req, res) => {
           plannedEndTime 
         },
         include: {
-          unit: { select: { id: true, name: true, type: true } },
+          unit: true, // Ambil semua field termasuk tuyaDeviceId
           package: true,
           kasir: { select: { id: true, name: true } },
         },
@@ -164,13 +164,18 @@ router.put('/:id/stop', authenticate, async (req, res) => {
     ]);
 
     // Broadcast ke Smart TV via WebSocket (status = expired/waktu habis)
-    try {
       getIo().emit('tv_status_update', {
         unitId: updatedSession.unit.id,
         status: 'available'
       });
+
+      // KONTROL TUYA: Matikan colokan saat stop manual
+      if (updatedSession.unit.tuyaDeviceId) {
+        const tuyaService = require('../lib/tuyaService');
+        tuyaService.controlDevice(updatedSession.unit.tuyaDeviceId, 'OFF');
+      }
     } catch (err) {
-      console.error('[Socket] Failed to broadcast stop session', err);
+      console.error('[Socket/Tuya] Failed to broadcast stop session', err);
     }
 
     res.json({ success: true, data: updatedSession });
