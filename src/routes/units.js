@@ -4,6 +4,25 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
+// GET /api/units/public — Akses publik (tanpa token) KHUSUS untuk TV Launcher
+router.get('/public', async (_req, res) => {
+  try {
+    const units = await prisma.unit.findMany({
+      where: { isActive: true },
+      orderBy: { displayOrder: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        status: true,
+      }
+    });
+    res.json({ success: true, data: units });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // GET /api/units — semua role (untuk dashboard)
 router.get('/', authenticate, async (_req, res) => {
   const units = await prisma.unit.findMany({
