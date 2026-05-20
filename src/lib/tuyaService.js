@@ -17,10 +17,10 @@ class TuyaService {
   // Menghitung Signature sesuai standar Tuya v1.0 yang paling ketat
   calcSign(body, method, url, timestamp, token = '') {
     const strBody = body ? crypto.createHash('sha256').update(body).digest('hex') : 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-    
+
     // StringToSign = Method + "\n" + Content-SHA256 + "\n" + Headers + "\n" + URL
     const stringToSign = [method, strBody, '', url].join('\n');
-    
+
     // sign = HMAC_SHA256(client_id + access_token + t + stringToSign, secret)
     const signStr = this.accessId + token + timestamp + stringToSign;
     return crypto.createHmac('sha256', this.accessSecret).update(signStr).digest('hex').toUpperCase();
@@ -29,7 +29,7 @@ class TuyaService {
   // Mengambil Access Token dari Tuya
   async getToken() {
     if (!this.accessId || !this.accessSecret) return null;
-    
+
     const timestamp = Date.now();
     const url = '/v1.0/token?grant_type=1';
     const sign = this.calcSign('', 'GET', url, timestamp);
@@ -64,7 +64,7 @@ class TuyaService {
 
     const timestamp = Date.now();
     const value = action === 'ON';
-    
+
     // Kirim ke switch dan switch_1 agar universal untuk semua merk colokan
     const body = {
       commands: [
@@ -80,7 +80,7 @@ class TuyaService {
     try {
       const fullUrl = this.baseUrl.replace(/\/$/, '') + url;
       console.log(`[Tuya] Memanggil API: ${fullUrl} untuk ${deviceId}`);
-      
+
       const res = await axios.post(fullUrl, body, {
         headers: {
           't': timestamp,
@@ -91,7 +91,7 @@ class TuyaService {
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (res.data.success) {
         console.log(`[Tuya] ✅ BERHASIL: Perangkat ${deviceId} sudah ${action}`);
       } else {

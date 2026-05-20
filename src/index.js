@@ -97,7 +97,7 @@ async function autoStopSessions() {
         where: { id: session.id },
         data: { 
           status: 'completed',
-          actualEndTime: now 
+          endTime: now  // fix: pakai endTime sesuai schema, bukan actualEndTime
         }
       });
 
@@ -126,5 +126,6 @@ async function autoStopSessions() {
   }
 }
 
-// Jalankan pengecekan setiap 1 menit
-setInterval(autoStopSessions, 60000);
+// Jalankan pengecekan setiap 30 detik
+setInterval(autoStopSessions, 30000);
+autoStopSessions(); // Jalankan langsung saat server start
