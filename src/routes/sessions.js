@@ -152,6 +152,7 @@ router.put('/:id/stop', authenticate, async (req, res) => {
       endTime,
       session.package
     );
+    const finalBillingAmount = billingAmount + Number(session.accumulatedBillingAmount || 0);
 
     const [updatedSession] = await prisma.$transaction([
       prisma.session.update({
@@ -159,7 +160,7 @@ router.put('/:id/stop', authenticate, async (req, res) => {
         data: { 
           endTime, 
           durationMinutes, 
-          billingAmount, 
+          billingAmount: finalBillingAmount, 
           status: 'completed' 
         },
         include: {
@@ -185,6 +186,88 @@ router.put('/:id/stop', authenticate, async (req, res) => {
       }
     } catch (err) {
       console.error('[Socket/Tuya] Failed to broadcast stop session', err);
+    }
+
+    res.json({ success: true, data: updatedSession });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
+  }
+});
+
+// PUT /api/sessions/:id/extend — perpanjang sesi
+router.put('/:id/extend', authenticate, async (req, res) => {
+  try {
+    const { packageId } = req.body;
+    if (!packageId) {
+      return res.status(400).json({ success: false, message: 'packageId wajib diisi' });
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+      include: { package: true, unit: true },
+    });
+
+    if (!session) return res.status(404).json({ success: false, message: 'Sesi tidak ditemukan' });
+    if (session.status !== 'active') {
+      return res.status(400).json({ success: false, message: 'Sesi sudah tidak aktif' });
+    }
+
+    // Ambil paket baru
+    const newPkg = await prisma.package.findUnique({ where: { id: packageId } });
+    if (!newPkg || !newPkg.isActive) {
+      return res.status(404).json({ success: false, message: 'Paket baru tidak ditemukan' });
+    }
+
+    const now = new Date();
+    
+    // 1. Hitung biaya dari paket lama hingga saat ini
+    let currentBillingAmount = 0;
+    if (session.package) {
+      const { billingAmount } = calculateBilling(session.startTime, now, session.package);
+      currentBillingAmount = billingAmount;
+    }
+
+    // Akumulasi biaya baru = biaya lama + biaya saat ini
+    const newAccumulatedAmount = Number(session.accumulatedBillingAmount || 0) + currentBillingAmount;
+
+    // 2. Tentukan plannedEndTime baru
+    let newPlannedEndTime = null;
+    if (newPkg.type === 'package' && newPkg.durationMinutes > 0) {
+      const durationMs = newPkg.durationMinutes * 60000;
+      
+      // Jika plannedEndTime lama masih di masa depan, tambahkan dari plannedEndTime tersebut
+      if (session.plannedEndTime && session.plannedEndTime > now) {
+        newPlannedEndTime = new Date(session.plannedEndTime.getTime() + durationMs);
+      } else {
+        newPlannedEndTime = new Date(now.getTime() + durationMs);
+      }
+    }
+
+    // 3. Update sesi
+    const updatedSession = await prisma.session.update({
+      where: { id: session.id },
+      data: {
+        packageId,
+        startTime: now, // Reset startTime ke sekarang untuk durasi paket baru
+        plannedEndTime: newPlannedEndTime,
+        accumulatedBillingAmount: newAccumulatedAmount,
+      },
+      include: {
+        unit: true,
+        package: true,
+        kasir: { select: { id: true, name: true } },
+      },
+    });
+
+    // Kirim websocket ke tv (barangkali tv perlu refresh timer)
+    try {
+      getIo().emit('tv_status_update', {
+        unitId: updatedSession.unit.id,
+        status: 'in_use'
+      });
+    } catch (err) {
+      console.error('[Socket] Failed to broadcast extend session', err);
     }
 
     res.json({ success: true, data: updatedSession });

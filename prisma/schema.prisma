@@ -159,6 +159,7 @@ model Session {
   endTime         DateTime? @map("end_time")
   durationMinutes Int?     @map("duration_minutes") // diisi saat sesi selesai
   billingAmount   Float?   @map("billing_amount")
+  accumulatedBillingAmount Float    @default(0) @map("accumulated_billing_amount")
   status          String   @default("active") // "active" | "completed" | "cancelled"
   notes           String?
   createdAt       DateTime @default(now()) @map("created_at")

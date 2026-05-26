@@ -88,16 +88,35 @@ async function autoStopSessions() {
       },
       include: {
         unit: true,
+        package: true,
       },
     });
 
     for (const session of expiredSessions) {
+      const endTime = now;
+      const durationMs = endTime - session.startTime;
+      const durationMinutes = Math.ceil(durationMs / 60000);
+
+      let currentBillingAmount = 0;
+      if (session.package) {
+        if (session.package.type === 'package') {
+          currentBillingAmount = Number(session.package.price);
+        } else if (session.package.type === 'hourly') {
+          const pricePerMinute = Number(session.package.price) / 60;
+          currentBillingAmount = Math.ceil(pricePerMinute * durationMinutes);
+        }
+      }
+
+      const finalBillingAmount = currentBillingAmount + Number(session.accumulatedBillingAmount || 0);
+
       // 1. Update status di Database menjadi completed
       await prisma.session.update({
         where: { id: session.id },
         data: { 
           status: 'completed',
-          endTime: now  // fix: pakai endTime sesuai schema, bukan actualEndTime
+          endTime: endTime,
+          durationMinutes,
+          billingAmount: finalBillingAmount
         }
       });
 
@@ -119,7 +138,7 @@ async function autoStopSessions() {
         tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
       }
       
-      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. DB Updated, Sinyal kunci & Tuya dikirim.`);
+      console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. DB Updated, Sinyal kunci & Tuya dikirim. Total Biaya: Rp ${finalBillingAmount}`);
     }
   } catch (err) {
     console.error('[AutoLock] Error:', err);
