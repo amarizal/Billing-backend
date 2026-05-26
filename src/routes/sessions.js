@@ -100,7 +100,8 @@ router.post('/start', authenticate, async (req, res) => {
           packageId, 
           startTime, 
           packageStartTime: startTime,
-          plannedEndTime 
+          plannedEndTime,
+          extendedInfo: pkg.name
         },
         include: {
           unit: true, // Ambil semua field termasuk tuyaDeviceId
@@ -254,6 +255,10 @@ router.put('/:id/extend', authenticate, async (req, res) => {
       }
     }
 
+    const updatedExtendedInfo = session.extendedInfo 
+      ? `${session.extendedInfo} + ${newPkg.name}`
+      : `${session.package?.name || 'Paket Utama'} + ${newPkg.name}`;
+
     // 3. Update sesi
     const updatedSession = await prisma.session.update({
       where: { id: session.id },
@@ -262,6 +267,7 @@ router.put('/:id/extend', authenticate, async (req, res) => {
         packageStartTime: now, // Set start time untuk paket baru
         plannedEndTime: newPlannedEndTime,
         accumulatedBillingAmount: newAccumulatedAmount,
+        extendedInfo: updatedExtendedInfo,
       },
       include: {
         unit: true,
