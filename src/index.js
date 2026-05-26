@@ -94,8 +94,11 @@ async function autoStopSessions() {
 
     for (const session of expiredSessions) {
       const endTime = now;
-      const durationMs = endTime - session.startTime;
-      const durationMinutes = Math.ceil(durationMs / 60000);
+      const latestDurationMs = endTime - (session.packageStartTime || session.startTime);
+      const latestDurationMinutes = Math.ceil(latestDurationMs / 60000);
+
+      const totalDurationMs = endTime - session.startTime;
+      const totalDurationMinutes = Math.ceil(totalDurationMs / 60000);
 
       let currentBillingAmount = 0;
       if (session.package) {
@@ -103,7 +106,7 @@ async function autoStopSessions() {
           currentBillingAmount = Number(session.package.price);
         } else if (session.package.type === 'hourly') {
           const pricePerMinute = Number(session.package.price) / 60;
-          currentBillingAmount = Math.ceil(pricePerMinute * durationMinutes);
+          currentBillingAmount = Math.ceil(pricePerMinute * latestDurationMinutes);
         }
       }
 
@@ -115,7 +118,7 @@ async function autoStopSessions() {
         data: { 
           status: 'completed',
           endTime: endTime,
-          durationMinutes,
+          durationMinutes: totalDurationMinutes,
           billingAmount: finalBillingAmount
         }
       });

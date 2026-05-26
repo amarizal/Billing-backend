@@ -99,6 +99,7 @@ router.post('/start', authenticate, async (req, res) => {
           kasirId: req.user.id, 
           packageId, 
           startTime, 
+          packageStartTime: startTime,
           plannedEndTime 
         },
         include: {
@@ -147,19 +148,22 @@ router.put('/:id/stop', authenticate, async (req, res) => {
     }
 
     const endTime = new Date();
-    const { durationMinutes, billingAmount } = calculateBilling(
-      session.startTime,
+    const { billingAmount } = calculateBilling(
+      session.packageStartTime || session.startTime,
       endTime,
       session.package
     );
     const finalBillingAmount = billingAmount + Number(session.accumulatedBillingAmount || 0);
+
+    const totalDurationMs = endTime - session.startTime;
+    const totalDurationMinutes = Math.ceil(totalDurationMs / 60000);
 
     const [updatedSession] = await prisma.$transaction([
       prisma.session.update({
         where: { id: session.id },
         data: { 
           endTime, 
-          durationMinutes, 
+          durationMinutes: totalDurationMinutes, 
           billingAmount: finalBillingAmount, 
           status: 'completed' 
         },
@@ -224,7 +228,7 @@ router.put('/:id/extend', authenticate, async (req, res) => {
     // 1. Hitung biaya dari paket lama hingga saat ini
     let currentBillingAmount = 0;
     if (session.package) {
-      const { billingAmount } = calculateBilling(session.startTime, now, session.package);
+      const { billingAmount } = calculateBilling(session.packageStartTime || session.startTime, now, session.package);
       currentBillingAmount = billingAmount;
     }
 
@@ -249,7 +253,7 @@ router.put('/:id/extend', authenticate, async (req, res) => {
       where: { id: session.id },
       data: {
         packageId,
-        startTime: now, // Reset startTime ke sekarang untuk durasi paket baru
+        packageStartTime: now, // Set start time untuk paket baru
         plannedEndTime: newPlannedEndTime,
         accumulatedBillingAmount: newAccumulatedAmount,
       },

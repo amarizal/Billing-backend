@@ -155,6 +155,7 @@ model Session {
   kasirId         String   @map("kasir_id")
   packageId       String?  @map("package_id")      // null jika pakai mode hourly bebas
   startTime       DateTime @map("start_time")
+  packageStartTime DateTime? @map("package_start_time")
   plannedEndTime  DateTime? @map("planned_end_time") // untuk alert notifikasi
   endTime         DateTime? @map("end_time")
   durationMinutes Int?     @map("duration_minutes") // diisi saat sesi selesai
