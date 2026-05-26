@@ -1,0 +1,11 @@
+[providers]
+node = {}
+
+[phases.setup]
+nixPkgs = ["...", "openssl"]
+
+[phases.build]
+cmds = ["npm ci", "npx prisma generate"]
+
+[phases.start]
+cmd = "npx prisma db push --skip-generate && node src/index.js"
