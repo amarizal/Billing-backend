@@ -121,8 +121,14 @@ router.post('/start', authenticate, async (req, res) => {
       
       // KONTROL TUYA: Jika unit pakai Smart Plug
       if (session.unit.tuyaDeviceId) {
-        const tuyaService = require('../lib/tuyaService');
-        tuyaService.controlDevice(session.unit.tuyaDeviceId, 'ON');
+        setImmediate(() => {
+          try {
+            const tuyaService = require('../lib/tuyaService');
+            tuyaService.controlDevice(session.unit.tuyaDeviceId, 'ON');
+          } catch (err) {
+            console.error('[Tuya Async] Error starting device:', err);
+          }
+        });
       }
     } catch (err) {
       console.error('[Socket/Tuya] Failed to broadcast start session', err);
@@ -192,8 +198,14 @@ router.put('/:id/stop', authenticate, async (req, res) => {
 
       // KONTROL TUYA: Matikan colokan saat stop manual
       if (updatedSession.unit.tuyaDeviceId) {
-        const tuyaService = require('../lib/tuyaService');
-        tuyaService.controlDevice(updatedSession.unit.tuyaDeviceId, 'OFF');
+        setImmediate(() => {
+          try {
+            const tuyaService = require('../lib/tuyaService');
+            tuyaService.controlDevice(updatedSession.unit.tuyaDeviceId, 'OFF');
+          } catch (err) {
+            console.error('[Tuya Async] Error stopping device:', err);
+          }
+        });
       }
     } catch (err) {
       console.error('[Socket/Tuya] Failed to broadcast stop session', err);

@@ -137,8 +137,14 @@ async function autoStopSessions() {
 
       // 4. Sinyal Matikan Colokan Tuya
       if (session.unit.tuyaDeviceId) {
-        const tuyaService = require('./lib/tuyaService');
-        tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
+        setImmediate(() => {
+          try {
+            const tuyaService = require('./lib/tuyaService');
+            tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
+          } catch (err) {
+            console.error('[Tuya Async Ticker] Error stopping device:', err);
+          }
+        });
       }
       
       console.log(`[AutoLock] Waktu habis untuk ${session.unit.name}. DB Updated, Sinyal kunci & Tuya dikirim. Total Biaya: Rp ${finalBillingAmount}`);
