@@ -143,6 +143,12 @@ router.put('/:id/stop', authenticate, async (req, res) => {
     });
 
     if (!session) return res.status(404).json({ success: false, message: 'Sesi tidak ditemukan' });
+    
+    // Jika sesi sudah diselesaikan oleh auto-stop scheduler, kembalikan data sesi secara normal
+    if (session.status === 'completed') {
+      return res.json({ success: true, data: session });
+    }
+
     if (session.status !== 'active') {
       return res.status(400).json({ success: false, message: 'Sesi sudah tidak aktif' });
     }
