@@ -4,10 +4,24 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Helper: get current date string in Asia/Jakarta (GMT+7) timezone → YYYYMMDD
+const getJakartaDateString = () => {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(now);
+  const day = parts.find(p => p.type === 'day').value;
+  const month = parts.find(p => p.type === 'month').value;
+  const year = parts.find(p => p.type === 'year').value;
+  return `${year}${month}${day}`;
+};
+
 // Helper: generate receipt number → RCP-YYYYMMDD-NNN
 const generateReceiptNumber = async () => {
-  const today = new Date();
-  const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+  const dateStr = getJakartaDateString();
   const prefix = `RCP-${dateStr}-`;
 
   const lastReceipt = await prisma.receipt.findFirst({

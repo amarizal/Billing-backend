@@ -80,13 +80,49 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Token tidak valid' });
     }
 
+    // --- FIX SECURITY & REDUNDANCY ---
+    // 1. Verifikasi apakah token refresh ini ada di database dan belum expired
+    const storedTokens = await prisma.refreshToken.findMany({
+      where: { userId: user.id }
+    });
+
+    let isValidStoredToken = false;
+    let matchingTokenId = null;
+
+    for (const t of storedTokens) {
+      const match = await bcrypt.compare(refreshToken, t.tokenHash);
+      if (match && t.expiresAt > new Date()) {
+        isValidStoredToken = true;
+        matchingTokenId = t.id;
+        break;
+      }
+    }
+
+    if (!isValidStoredToken) {
+      return res.status(401).json({ success: false, message: 'Refresh token tidak valid atau telah dicabut' });
+    }
+
+    // 2. Generate token baru
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(user.id, user.role);
+
+    // 3. Ganti token lama dengan yang baru di database (rotasi token)
+    const bcryptHash = await bcrypt.hash(newRefreshToken, 8);
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    await prisma.$transaction([
+      prisma.refreshToken.delete({ where: { id: matchingTokenId } }),
+      prisma.refreshToken.create({
+        data: { userId: user.id, tokenHash: bcryptHash, expiresAt }
+      })
+    ]);
 
     res.json({
       success: true,
       data: { accessToken, refreshToken: newRefreshToken },
     });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(401).json({ success: false, message: 'Refresh token tidak valid atau kadaluarsa' });
   }
 });
