@@ -42,10 +42,34 @@ const getMonthRange = (year, month) => {
   return { start, end };
 };
 
+// Helper: Enrich receipts list with virtual order details for unified checkout receipts
+const enrichReceiptsForReport = async (receipts) => {
+  for (let r of receipts) {
+    if (!r.order && r.sessionId) {
+      const sessionOrders = await prisma.posOrder.findMany({
+        where: { sessionId: r.sessionId },
+        include: { items: true }
+      });
+      if (sessionOrders.length > 0) {
+        const aggregatedItems = [];
+        for (const order of sessionOrders) {
+          aggregatedItems.push(...order.items);
+        }
+        r.order = {
+          id: 'virtual-session-orders',
+          subtotal: r.posAmount,
+          items: aggregatedItems
+        };
+      }
+    }
+  }
+  return receipts;
+};
+
 // GET /api/reports/daily?date=YYYY-MM-DD
 router.get('/daily', authenticate, async (req, res) => {
   try {
-    const dateStr = req.query.date || new Date().toISOString().slice(0, 10);
+    const dateStr = req.query.date || getJakartaDateStrFromDate(new Date());
     const { start, end } = getDayRange(dateStr);
 
     const receipts = await prisma.receipt.findMany({
@@ -62,6 +86,8 @@ router.get('/daily', authenticate, async (req, res) => {
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    await enrichReceiptsForReport(receipts);
 
     const totalBilling = receipts.reduce((s, r) => s + Number(r.billingAmount), 0);
     const totalPos     = receipts.reduce((s, r) => s + Number(r.posAmount), 0);
@@ -84,8 +110,17 @@ router.get('/daily', authenticate, async (req, res) => {
 // GET /api/reports/monthly?year=YYYY&month=MM
 router.get('/monthly', authenticate, async (req, res) => {
   try {
-    const year  = parseInt(req.query.year  || new Date().getFullYear());
-    const month = parseInt(req.query.month || new Date().getMonth() + 1);
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: 'numeric',
+    }).formatToParts(now);
+    const currentYear = parseInt(parts.find(p => p.type === 'year').value, 10);
+    const currentMonth = parseInt(parts.find(p => p.type === 'month').value, 10);
+
+    const year  = parseInt(req.query.year  || currentYear);
+    const month = parseInt(req.query.month || currentMonth);
     const { start, end } = getMonthRange(year, month);
 
     const receipts = await prisma.receipt.findMany({
@@ -97,6 +132,8 @@ router.get('/monthly', authenticate, async (req, res) => {
       },
       orderBy: { createdAt: 'asc' },
     });
+
+    await enrichReceiptsForReport(receipts);
 
     // Grup per hari
     const byDay = {};
@@ -131,11 +168,28 @@ router.get('/monthly', authenticate, async (req, res) => {
 // GET /api/reports/units?from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get('/units', authenticate, async (req, res) => {
   try {
-    const from = req.query.from ? new Date(req.query.from) : new Date(new Date().setDate(1));
-    const to   = req.query.to   ? new Date(req.query.to + 'T23:59:59') : new Date();
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(now);
+    const dayStr = parts.find(p => p.type === 'day').value;
+    const monthStr = parts.find(p => p.type === 'month').value;
+    const yearStr = parts.find(p => p.type === 'year').value;
+
+    const todayStr = `${yearStr}-${monthStr}-${dayStr}`;
+    const firstDayStr = `${yearStr}-${monthStr}-01`;
+
+    const fromStr = req.query.from || firstDayStr;
+    const toStr = req.query.to || todayStr;
+
+    const fromDate = getDayRange(fromStr).start;
+    const toDate = getDayRange(toStr).end;
 
     const sessions = await prisma.session.findMany({
-      where: { status: 'completed', startTime: { gte: from, lte: to } },
+      where: { status: 'completed', startTime: { gte: fromDate, lte: toDate } },
       include: { unit: { select: { id: true, name: true, type: true } } },
     });
 

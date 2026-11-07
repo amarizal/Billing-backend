@@ -141,8 +141,28 @@ model PosItem {
   // Relations
   category     PosCategory  @relation(fields: [categoryId], references: [id])
   orderItems   PosOrderItem[]
+  components   PosItemComponent[] @relation("BundleComponents") // isi combo (mis. Josu = Extrajoss + Susu)
+  componentOf  PosItemComponent[] @relation("ComponentOf")
 
   @@map("pos_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+// POS ITEM COMPONENTS — Isi menu combo. Menjual combo mengurangi
+// stok komponennya; combo sendiri tidak punya stok.
+// ─────────────────────────────────────────────────────────────
+
+model PosItemComponent {
+  id          String  @id @default(uuid())
+  bundleId    String  @map("bundle_id")
+  componentId String  @map("component_id")
+  quantity    Int     @default(1)
+
+  bundle      PosItem @relation("BundleComponents", fields: [bundleId], references: [id], onDelete: Cascade)
+  component   PosItem @relation("ComponentOf", fields: [componentId], references: [id])
+
+  @@unique([bundleId, componentId])
+  @@map("pos_item_components")
 }
 
 // ─────────────────────────────────────────────────────────────

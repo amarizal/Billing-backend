@@ -26,9 +26,10 @@ class TuyaService {
     return crypto.createHmac('sha256', this.accessSecret).update(signStr).digest('hex').toUpperCase();
   }
 
-  // Mengambil Access Token dari Tuya
+  // Mengambil Access Token dari Tuya (disimpan sampai hampir kedaluwarsa agar tidak minta token tiap perintah)
   async getToken() {
     if (!this.accessId || !this.accessSecret) return null;
+    if (this.token && Date.now() < this.tokenExpiresAt) return this.token;
 
     const timestamp = Date.now();
     const url = '/v1.0/token?grant_type=1';
@@ -42,10 +43,13 @@ class TuyaService {
           'sign_method': 'HMAC-SHA256',
           'client_id': this.accessId,
           'sign': sign
-        }
+        },
+        timeout: 5000 // Batas waktu 5 detik
       });
       if (res.data.success) {
-        return res.data.result.access_token;
+        this.token = res.data.result.access_token;
+        this.tokenExpiresAt = Date.now() + ((res.data.result.expire_time || 3600) - 60) * 1000;
+        return this.token;
       }
       console.error(`[Tuya] Token Error: ${res.data.msg} (Code: ${res.data.code})`);
       return null;
@@ -57,10 +61,14 @@ class TuyaService {
 
   // Mengirim perintah ke Colokan (ON / OFF)
   async controlDevice(deviceId, action) {
-    if (!this.enabled || !deviceId) return;
+    if (!this.enabled || !deviceId) {
+      return { success: true };
+    }
 
     const token = await this.getToken();
-    if (!token) return;
+    if (!token) {
+      return { success: false, code: 401, msg: 'Gagal autentikasi token Tuya' };
+    }
 
     const timestamp = Date.now();
     const value = action === 'ON';
@@ -89,20 +97,67 @@ class TuyaService {
           'sign': sign,
           'access_token': token,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 5000 // Batas waktu 5 detik
       });
 
       if (res.data.success) {
         console.log(`[Tuya] ✅ BERHASIL: Perangkat ${deviceId} sudah ${action}`);
+        return { success: true };
       } else {
         console.error(`[Tuya] ❌ GAGAL: ${res.data.msg} (Code: ${res.data.code})`);
+        this.dropInvalidToken(res.data.code);
         // Jika 28841107 muncul lagi, kita beri saran otomatis
         if (res.data.code === 28841107) {
           console.warn('[Tuya] Saran: Coba ganti TUYA_BASE_URL di Railway ke https://openapi.tuyain.com atau https://openapi.tuyaus.com');
         }
+        return { success: false, code: res.data.code, msg: res.data.msg };
       }
     } catch (err) {
+      const errorMsg = err.response?.data?.msg || err.message;
+      const errorCode = err.response?.data?.code || 500;
       console.error(`[Tuya] 🚨 ERROR:`, err.response?.data || err.message);
+      return { success: false, code: errorCode, msg: errorMsg };
+    }
+  }
+
+  // Token ditolak Tuya (1010 token invalid, 1011 token expired): minta baru di panggilan berikutnya
+  dropInvalidToken(code) {
+    if (code === 1010 || code === 1011) this.token = null;
+  }
+
+  // Membaca status colokan yang sebenarnya: { online, on } atau null jika gagal dibaca
+  async getSwitchState(deviceId) {
+    if (!this.enabled || !deviceId) return null;
+
+    const token = await this.getToken();
+    if (!token) return null;
+
+    const timestamp = Date.now();
+    const url = `/v1.0/devices/${deviceId}`;
+    const sign = this.calcSign('', 'GET', url, timestamp, token);
+
+    try {
+      const res = await axios.get(this.baseUrl.replace(/\/$/, '') + url, {
+        headers: {
+          't': timestamp,
+          'sign_method': 'HMAC-SHA256',
+          'client_id': this.accessId,
+          'sign': sign,
+          'access_token': token,
+        },
+        timeout: 5000,
+      });
+      if (!res.data.success) {
+        console.error(`[Tuya] Gagal membaca status ${deviceId}: ${res.data.msg} (Code: ${res.data.code})`);
+        this.dropInvalidToken(res.data.code);
+        return null;
+      }
+      const sw = (res.data.result.status || []).find((s) => s.code === 'switch_1' || s.code === 'switch');
+      return { online: res.data.result.online === true, on: sw ? sw.value === true : null };
+    } catch (err) {
+      console.error(`[Tuya] Gagal membaca status ${deviceId}:`, err.response?.data || err.message);
+      return null;
     }
   }
 }

@@ -10,6 +10,10 @@ const calculateBilling = (startTime, endTime, pkg) => {
   const durationMs = endTime - startTime;
   const durationMinutes = Math.ceil(durationMs / 60000); // bulatkan ke atas
 
+  if (!pkg) {
+    return { durationMinutes, billingAmount: 0 };
+  }
+
   if (pkg.type === 'package') {
     // Paket: harga tetap berdasarkan paket yang dipilih
     return { durationMinutes, billingAmount: Number(pkg.price) };
@@ -25,6 +29,29 @@ const calculateBilling = (startTime, endTime, pkg) => {
   return { durationMinutes, billingAmount: 0 };
 };
 
+// ─── Enrich Session dengan POS Amount ───────────────────────
+const enrichSessions = async (sessions) => {
+  if (sessions.length === 0) return sessions;
+  const sessionIds = sessions.map(s => s.id);
+  const posOrders = await prisma.posOrder.findMany({
+    where: { sessionId: { in: sessionIds } }
+  });
+  return sessions.map(s => {
+    const sOrders = posOrders.filter(o => o.sessionId === s.id);
+    const posAmount = sOrders.reduce((sum, o) => sum + Number(o.subtotal), 0);
+    return { ...s, posAmount };
+  });
+};
+
+const enrichSession = async (session) => {
+  if (!session) return session;
+  const posOrders = await prisma.posOrder.findMany({
+    where: { sessionId: session.id }
+  });
+  const posAmount = posOrders.reduce((sum, o) => sum + Number(o.subtotal), 0);
+  return { ...session, posAmount };
+};
+
 // GET /api/sessions — semua sesi (admin: semua, kasir: aktif saja)
 router.get('/', authenticate, async (req, res) => {
   const where = req.user.role === 'admin' ? {} : { status: 'active' };
@@ -38,7 +65,8 @@ router.get('/', authenticate, async (req, res) => {
     },
     take: 100,
   });
-  res.json({ success: true, data: sessions });
+  const enriched = await enrichSessions(sessions);
+  res.json({ success: true, data: enriched });
 });
 
 // GET /api/sessions/active — semua sesi aktif (untuk dashboard real-time)
@@ -51,7 +79,8 @@ router.get('/active', authenticate, async (_req, res) => {
       kasir: { select: { id: true, name: true } },
     },
   });
-  res.json({ success: true, data: sessions });
+  const enriched = await enrichSessions(sessions);
+  res.json({ success: true, data: enriched });
 });
 
 // POST /api/sessions/start — mulai sesi baru
@@ -118,23 +147,27 @@ router.post('/start', authenticate, async (req, res) => {
         unitId: session.unit.id,
         status: 'in_use'
       });
-      
-      // KONTROL TUYA: Jika unit pakai Smart Plug
-      if (session.unit.tuyaDeviceId) {
-        setImmediate(() => {
-          try {
-            const tuyaService = require('../lib/tuyaService');
-            tuyaService.controlDevice(session.unit.tuyaDeviceId, 'ON');
-          } catch (err) {
-            console.error('[Tuya Async] Error starting device:', err);
-          }
-        });
-      }
     } catch (err) {
-      console.error('[Socket/Tuya] Failed to broadcast start session', err);
+      console.error('[Socket] Failed to broadcast start session', err);
     }
 
-    res.status(201).json({ success: true, data: session });
+    // KONTROL TUYA: Jika unit pakai Smart Plug
+    let tuyaWarning = null;
+    if (session.unit.tuyaDeviceId) {
+      try {
+        const tuyaService = require('../lib/tuyaService');
+        const tuyaRes = await tuyaService.controlDevice(session.unit.tuyaDeviceId, 'ON');
+        if (tuyaRes && !tuyaRes.success) {
+          tuyaWarning = `Colokan Tuya: ${tuyaRes.msg} (Code: ${tuyaRes.code})`;
+        }
+      } catch (err) {
+        console.error('[Tuya] Gagal menyalakan colokan:', err);
+        tuyaWarning = `Gagal mengontrol colokan Tuya: ${err.message}`;
+      }
+    }
+
+    const enriched = await enrichSession(session);
+    res.status(201).json({ success: true, data: enriched, warning: tuyaWarning });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
@@ -153,7 +186,8 @@ router.put('/:id/stop', authenticate, async (req, res) => {
     
     // Jika sesi sudah diselesaikan oleh auto-stop scheduler, kembalikan data sesi secara normal
     if (session.status === 'completed') {
-      return res.json({ success: true, data: session });
+      const enriched = await enrichSession(session);
+      return res.json({ success: true, data: enriched });
     }
 
     if (session.status !== 'active') {
@@ -195,23 +229,27 @@ router.put('/:id/stop', authenticate, async (req, res) => {
         unitId: updatedSession.unit.id,
         status: 'available'
       });
-
-      // KONTROL TUYA: Matikan colokan saat stop manual
-      if (updatedSession.unit.tuyaDeviceId) {
-        setImmediate(() => {
-          try {
-            const tuyaService = require('../lib/tuyaService');
-            tuyaService.controlDevice(updatedSession.unit.tuyaDeviceId, 'OFF');
-          } catch (err) {
-            console.error('[Tuya Async] Error stopping device:', err);
-          }
-        });
-      }
     } catch (err) {
-      console.error('[Socket/Tuya] Failed to broadcast stop session', err);
+      console.error('[Socket] Failed to broadcast stop session', err);
     }
 
-    res.json({ success: true, data: updatedSession });
+    // KONTROL TUYA: Matikan colokan saat stop manual
+    let tuyaWarning = null;
+    if (updatedSession.unit.tuyaDeviceId) {
+      try {
+        const tuyaService = require('../lib/tuyaService');
+        const tuyaRes = await tuyaService.controlDevice(updatedSession.unit.tuyaDeviceId, 'OFF');
+        if (tuyaRes && !tuyaRes.success) {
+          tuyaWarning = `Colokan Tuya: ${tuyaRes.msg} (Code: ${tuyaRes.code})`;
+        }
+      } catch (err) {
+        console.error('[Tuya] Gagal mematikan colokan:', err);
+        tuyaWarning = `Gagal mengontrol colokan Tuya: ${err.message}`;
+      }
+    }
+
+    const enriched = await enrichSession(updatedSession);
+    res.json({ success: true, data: enriched, warning: tuyaWarning });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
@@ -298,7 +336,8 @@ router.put('/:id/extend', authenticate, async (req, res) => {
       console.error('[Socket] Failed to broadcast extend session', err);
     }
 
-    res.json({ success: true, data: updatedSession });
+    const enriched = await enrichSession(updatedSession);
+    res.json({ success: true, data: enriched });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
@@ -318,7 +357,8 @@ router.get('/:id', authenticate, async (req, res) => {
         receipt: true,
       },
     });
-    res.json({ success: true, data: session });
+    const enriched = await enrichSession(session);
+    res.json({ success: true, data: enriched });
   } catch {
     res.status(404).json({ success: false, message: 'Sesi tidak ditemukan' });
   }

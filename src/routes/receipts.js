@@ -36,6 +36,29 @@ const generateReceiptNumber = async () => {
   return `${prefix}${String(lastNum + 1).padStart(3, '0')}`;
 };
 
+// Helper: Enrich receipt with virtual order from session's POS orders
+const enrichReceipt = async (receipt) => {
+  if (!receipt) return receipt;
+  if (!receipt.order && receipt.sessionId) {
+    const sessionOrders = await prisma.posOrder.findMany({
+      where: { sessionId: receipt.sessionId },
+      include: { items: true }
+    });
+    if (sessionOrders.length > 0) {
+      const aggregatedItems = [];
+      for (const order of sessionOrders) {
+        aggregatedItems.push(...order.items);
+      }
+      receipt.order = {
+        id: 'virtual-session-orders',
+        subtotal: receipt.posAmount,
+        items: aggregatedItems
+      };
+    }
+  }
+  return receipt;
+};
+
 // POST /api/receipts — checkout & buat struk
 router.post('/', authenticate, async (req, res) => {
   try {
@@ -54,12 +77,20 @@ router.post('/', authenticate, async (req, res) => {
         return res.status(400).json({ success: false, message: 'Sesi belum selesai atau tidak ditemukan' });
       }
       billingAmount = Number(session.billingAmount || 0);
+
+      // Sum all POS orders linked to this session
+      const sessionOrders = await prisma.posOrder.findMany({
+        where: { sessionId }
+      });
+      posAmount = sessionOrders.reduce((sum, order) => sum + Number(order.subtotal), 0);
     }
 
     if (orderId) {
       const order = await prisma.posOrder.findUnique({ where: { id: orderId } });
       if (!order) return res.status(404).json({ success: false, message: 'Order tidak ditemukan' });
-      posAmount = Number(order.subtotal);
+      if (!sessionId) {
+        posAmount = Number(order.subtotal);
+      }
     }
 
     const totalAmount = billingAmount + posAmount;
@@ -89,7 +120,8 @@ router.post('/', authenticate, async (req, res) => {
       },
     });
 
-    res.status(201).json({ success: true, data: receipt });
+    const enriched = await enrichReceipt(receipt);
+    res.status(201).json({ success: true, data: enriched });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Terjadi kesalahan server' });
@@ -112,7 +144,8 @@ router.get('/:id', authenticate, async (req, res) => {
         kasir: { select: { name: true } },
       },
     });
-    res.json({ success: true, data: receipt });
+    const enriched = await enrichReceipt(receipt);
+    res.json({ success: true, data: enriched });
   } catch {
     res.status(404).json({ success: false, message: 'Struk tidak ditemukan' });
   }

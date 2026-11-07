@@ -137,10 +137,10 @@ async function autoStopSessions() {
 
       // 4. Sinyal Matikan Colokan Tuya
       if (session.unit.tuyaDeviceId) {
-        setImmediate(() => {
+        setImmediate(async () => {
           try {
             const tuyaService = require('./lib/tuyaService');
-            tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
+            await tuyaService.controlDevice(session.unit.tuyaDeviceId, 'OFF');
           } catch (err) {
             console.error('[Tuya Async Ticker] Error stopping device:', err);
           }
@@ -154,6 +154,21 @@ async function autoStopSessions() {
   }
 }
 
-// Jalankan pengecekan setiap 30 detik
-setInterval(autoStopSessions, 30000);
-autoStopSessions(); // Jalankan langsung saat server start
+// Setiap 30 detik: hentikan sesi yang habis, lalu pastikan colokannya benar-benar OFF.
+// `ticking` mencegah putaran bertumpuk kalau panggilan Tuya lambat.
+const { ensurePlugsOff } = require('./lib/plugGuard');
+let ticking = false;
+async function tick() {
+  if (ticking) return;
+  ticking = true;
+  try {
+    await autoStopSessions();
+    await ensurePlugsOff(prisma, require('./lib/tuyaService'));
+  } catch (err) {
+    console.error('[Tuya Guard] Error:', err);
+  } finally {
+    ticking = false;
+  }
+}
+setInterval(tick, 30000);
+tick(); // Jalankan langsung saat server start
